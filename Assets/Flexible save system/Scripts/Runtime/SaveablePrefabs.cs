@@ -1,8 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace SaveLoadSystem
-{
+namespace SaveLoadSystem {
     [CreateAssetMenu(fileName = "SaveablePrefabs", menuName = "ScriptableObjects/SaveLoadSystem/SingleInstance/SaveablePrefabs")]
     public class SaveablePrefabs : ScriptableObject
     {

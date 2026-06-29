@@ -2,8 +2,8 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace SaveLoadSystem
-{
+namespace SaveLoadSystem {
+    [DisallowMultipleComponent]
     public partial class SaveableEntity : MonoBehaviour, ISaveID
     {
         [Serializable]
@@ -103,7 +103,7 @@ namespace SaveLoadSystem
             public string prefabID;   // Prefab ID for instantiating this gameObject
             public string thisChildID; // ID for this in case this is a child of a SaveableEntity
             public bool saveTransform; 
-            public TransformData transformData; // Location, Rotation and scale of this gameObject
+            public TransformData? transformData; // Location, Rotation and scale of this gameObject
             public List<string> deletedChilds;
             public bool needsToBeReinstantiated;
         }
@@ -129,7 +129,7 @@ namespace SaveLoadSystem
             {
                 // When the object is not already registered in the manager but the ID already exists, generate a new one
                 SaveableEntity fromManager = SaveableEntityManager.GetSaveable(m_ID);
-                if (fromManager != null && fromManager != this && 
+                if (fromManager != null && fromManager != this &&
                    SaveableEntityManager.IDExists(m_ID))
                     GenerateID();
             }
@@ -140,26 +140,35 @@ namespace SaveLoadSystem
 
             SaveableEntityManager.AddSaveable(this);
         }
+
+        private void OnEnable()
+        {
+            SaveableEntityManager.RegisterEntity(this);
+        }
+
+        private void OnDisable()
+        {
+            SaveableEntityManager.UnregisterEntity(this);
+        }
         
 
         private void OnDestroy()
         {
+            SaveableEntityManager.UnregisterEntity(this);
             SaveableEntityManager.OnSaveableDeleted(this);
         }
         void PrefabChildIdentifier()
         {
             List<SaveableEntity> childs = ObjectFinder.GetFirstChildLayerOfType<SaveableEntity>(gameObject);
             m_childIDsOfThis.Clear();
-            for (int i=0; i< childs.Count; ++i)
+            foreach (var child in childs)
             {
-                string childID = i + childs[i].name + "_" + childs[i].transform.parent.name;
-                if (childID.Contains("(Clone)"))
+                if (string.IsNullOrEmpty(child.m_childID))
                 {
-                    childID = childID.Replace("(Clone)", "");
+                    child.m_childID = Guid.NewGuid().ToString();
                 }
-                childs[i].m_childID = childID;
-                m_childIDsOfThis.Add(childs[i].m_childID);
-                childs[i].PrefabChildIdentifier();
+                m_childIDsOfThis.Add(child.m_childID);
+                child.PrefabChildIdentifier();
             }
         }
         List<string> GetDeletedChilds()
@@ -207,7 +216,7 @@ namespace SaveLoadSystem
         }
         public void SetSaveTransform(bool enable)
         {
-            m_saveTransform = enabled;
+            m_saveTransform = enable;
         }
         public bool GetSaveTransform()
         {
@@ -215,10 +224,12 @@ namespace SaveLoadSystem
         }
         public void ResetTransform()
         {
-            transform.localPosition = m_metadata.transformData.local.position.ToVector3();
-            transform.localRotation = m_metadata.transformData.local.rotation.ToQuaternion();
-            transform.localScale = m_metadata.transformData.local.scale.ToVector3();
-
+            if (m_metadata.transformData.HasValue)
+            {
+                transform.localPosition = m_metadata.transformData.Value.local.position.ToVector3();
+                transform.localRotation = m_metadata.transformData.Value.local.rotation.ToQuaternion();
+                transform.localScale = m_metadata.transformData.Value.local.scale.ToVector3();
+            }
         }
         public ObjectMetadata metadata
         {
@@ -257,12 +268,14 @@ namespace SaveLoadSystem
                 parentID = m_parent.m_ID;
                 parentName = transform.parent.name;
             }
-            TransformData transformData = new TransformData();
+            TransformData? transformData = null;
             if (m_saveTransform)
             {
-                transformData.local.position.FromVector3(transform.localPosition);
-                transformData.local.rotation.FromQuaternion(transform.localRotation);
-                transformData.local.scale.FromVector3(transform.localScale);
+                TransformData data = new TransformData();
+                data.local.position.FromVector3(transform.localPosition);
+                data.local.rotation.FromQuaternion(transform.localRotation);
+                data.local.scale.FromVector3(transform.localScale);
+                transformData = data;
             }
 
             bool hasPrefab = true;
@@ -283,7 +296,15 @@ namespace SaveLoadSystem
             {
                 if (interfaces[i].NeedsToBeSaved()/* || m_parent != null*/)
                 {
-                    state[i+interfaces[i].GetType().ToString()] = interfaces[i].SaveState();
+                    try
+                    {
+                        state[interfaces[i].GetType().FullName] = interfaces[i].SaveState();
+                    }
+                    catch (System.NotImplementedException)
+                    {
+                        Debug.LogError($"The SaveState method of the component '{interfaces[i].GetType().FullName}' on GameObject '{gameObject.name}' is not implemented.", gameObject);
+                        // Optionally, re-throw or handle as needed
+                    }
                     doNotSaveThis = false;
                     needsReinstantiate |= interfaces[i].NeedsReinstantiation();
                 }
@@ -416,7 +437,7 @@ namespace SaveLoadSystem
             ISaveable[] interfaces = GetComponents<ISaveable>();
             for (int i = 0; i < interfaces.Length;  ++i)
             {
-                string typeName = i+interfaces[i].GetType().ToString();
+                string typeName = interfaces[i].GetType().FullName;
                 if (m_dictionary.TryGetValue(typeName, out object savedState))
                 {
 
@@ -442,63 +463,16 @@ namespace SaveLoadSystem
                 //Debug.LogWarning("m_dictionary is null, did you forgot to call SaveableEntity::CreateFromSave() first?");
                 return;
             }
-            if (m_metadata.parentID != "")
+            if (!string.IsNullOrEmpty(m_metadata.parentID))
             {
-#if UNITY_2021_3_OR_NEWER
-                SaveableEntity[] list = FindObjectsByType<SaveableEntity>(FindObjectsInactive.Include, FindObjectsSortMode.None);
-#else
-                SaveableEntity[] list = FindObjectsOfType<SaveableEntity>();
-#endif
-                foreach (var saveavle in list)
+                SaveableEntity parentEntity = SaveableEntityManager.GetSaveable(m_metadata.parentID);
+                if (parentEntity != null)
                 {
-                    if (saveavle.m_ID == m_metadata.parentID)
-                    {
-                        // Parent Saveable found
-                        // Search for exact parent Object...
-                        ISaveable[] possibleEventReceiver = saveavle.gameObject.GetComponents<ISaveable>();
-
-                        GameObject parent = ObjectFinder.GetFirstChildWithNameRecusive(saveavle.gameObject, m_metadata.parentName);
-                        if (parent != null)
-                        {
-                            for (int i = 0; i < parent.transform.childCount; ++i)
-                            {
-                                GameObject child = parent.transform.GetChild(i).gameObject;
-                                if (child.name == transform.name)
-                                {
-                                    SaveableEntity childS = child.GetComponent<SaveableEntity>();
-                                    if (childS != null)
-                                        if (childS.m_dictionary == null)// Replace the existing object with the new one
-                                        {
-                                            //DestroyImmediate(parent.transform.GetChild(i).gameObject);
-                                            childS.m_dictionary = m_dictionary;
-                                            childS.metadata = metadata;
-                                        //    m_addToAll.Add(childS);
-                                            childS.LoadState();
-                                            childS.PostLoad();
-                                         //   m_toDelete.Add(this);
-                                            m_ID = "";
-                                            foreach(var childOfTHis in GetComponentsInChildren<SaveableEntity>())
-                                            {
-                                                childOfTHis.PostLoad();
-                                            }
-                                            return;
-                                        }
-                                }
-                            }
-
-                            transform.SetParent(parent.transform);
-                            List<ISaveable> signalReceiver = ObjectFinder.GetFirstParentOfType<ISaveable>(parent);
-                            foreach (var receiver in signalReceiver)
-                                receiver.GotAddedAsChild(transform.gameObject, parent);
-                        }
-                        else
-                        {
-                            transform.SetParent(saveavle.transform);
-                        }
-
-                        m_parent = saveavle;
-                        return;
-                    }
+                    AttachToParent(parentEntity);
+                }
+                else
+                {
+                    Debug.LogWarning($"Could not find parent with ID {m_metadata.parentID} for object {name} in the manager. This might happen if the parent is inactive.", this);
                 }
             }
         }
@@ -519,31 +493,34 @@ namespace SaveLoadSystem
                     child.ResetTransform();
             }
         }
-        void PostInstantiation()
+        void AllObjectsStateLoaded()
         {
             if (m_dictionary == null)
                 return;
-           /* foreach (var saveable in GetComponents<ISaveable>())
-            {
-                string typeName = saveable.GetType().ToString();
-                if (m_dictionary.TryGetValue(typeName, out object savedState))
-                    saveable.PostInstantiation(savedState);
-            }*/
 
             ISaveable[] interfaces = GetComponents<ISaveable>();
             for (int i = 0; i < interfaces.Length; ++i)
             {
-                string typeName = i+interfaces[i].GetType().ToString();
+                string typeName = interfaces[i].GetType().FullName;
                 if (m_dictionary.TryGetValue(typeName, out object savedState))
                 {
+                    if (savedState != null)
+                    {
+                        interfaces[i].AllObjectsStateLoaded(savedState);
+                    }
+                }
+            }
+        }
 
-                }
-                if (savedState == null)
-                {
-                    Debug.LogWarning("Can't find the ISaveable interface: " + interfaces[i].GetType().ToString() + " with save index: " + i);
-                }
-                else
-                    interfaces[i].PostInstantiation(savedState);
+        void AllObjectsDependenciesRestored()
+        {
+            if (m_dictionary == null)
+                return;
+
+            ISaveable[] interfaces = GetComponents<ISaveable>();
+            foreach (var iSaveable in interfaces)
+            {
+                iSaveable.AllObjectsDependenciesRestored();
             }
         }
 

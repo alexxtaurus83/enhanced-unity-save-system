@@ -44,59 +44,60 @@ namespace SaveLoadSystem.Editor
 
         public override void OnInspectorGUI()
         {
+            serializedObject.Update();
 
-            // SaveLoadSystem myTarget = (SaveLoadSystem)target;
-            string fullPath = SaveLoadSystem.basePath +
-                              serializedObject.FindProperty("m_savePath").stringValue +
-                              serializedObject.FindProperty("m_saveName").stringValue;
+            EditorGUILayout.LabelField("Save File Configuration", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("m_savePath"));
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("m_saveName"));
 
-            GUILayout.Label("Full path: \n" + fullPath);
-            savePath = EditorGUILayout.TextField("Save path: ", savePath);
-            if (savePath != serializedObject.FindProperty("m_savePath").stringValue)
+            EditorGUILayout.Space();
+
+            EditorGUILayout.LabelField("Encryption Settings", EditorStyles.boldLabel);
+            EditorGUILayout.PropertyField(serializedObject.FindProperty("m_useEncryption"));
+            
+            // Only show the encryption key field if encryption is enabled
+            if (serializedObject.FindProperty("m_useEncryption").boolValue)
             {
-                serializedObject.FindProperty("m_savePath").stringValue = savePath;
-                serializedObject.ApplyModifiedProperties();
+                EditorGUILayout.PropertyField(serializedObject.FindProperty("m_encryptionKey"));
             }
 
+            serializedObject.ApplyModifiedProperties();
 
-            currentSave = (Saves)EditorGUILayout.EnumPopup("Select save index:", currentSave);
-            if (GetSaveName(currentSave) != serializedObject.FindProperty("m_saveName").stringValue)
-            {
-                SetSaveName(currentSave);
-            }
+            EditorGUILayout.Space();
+            EditorGUILayout.LabelField("Debug Controls (Play Mode Only)", EditorStyles.boldLabel);
+
+            string fullPath = SaveLoadSystem.fullSavePath;
+            EditorGUILayout.HelpBox("Full Save Path:\n" + fullPath, MessageType.Info);
 
             if (Application.isPlaying)
             {
-                GUILayout.BeginHorizontal();
-                if (GUILayout.Button("Save new"))
+                EditorGUILayout.BeginHorizontal();
+                if (GUILayout.Button("Save New"))
                 {
                     SaveLoadSystem.SaveNew();
                 }
-                if (GUILayout.Button("Save"))
+                if (GUILayout.Button("Save (Overwrite)"))
                 {
                     SaveLoadSystem.Save();
                 }
-                GUILayout.EndHorizontal();
+                EditorGUILayout.EndHorizontal();
+
                 if (GUILayout.Button("Load"))
                 {
                     SaveLoadSystem.Load();
                 }
-
-                //GUILayout.EndHorizontal();
+                if (GUILayout.Button("Delete Save File"))
+                {
+                    SaveLoadSystem.Delete();
+                }
                 if (GUILayout.Button("Reload Scene"))
                 {
                     SceneManager.LoadScene(SceneManager.GetActiveScene().name);
                 }
-
             }
             else
             {
-                GUI.contentColor = 2 * Color.red + Color.green;
-                if (orange == null)
-                    GUILayout.Label("Can't Save/Load, you need to start the game first");
-                else
-                    GUILayout.Label("Can't Save/Load, you need to start the game first", orange);
-
+                EditorGUILayout.HelpBox("Debug controls are available only when the game is running.", MessageType.Info);
             }
         }
 

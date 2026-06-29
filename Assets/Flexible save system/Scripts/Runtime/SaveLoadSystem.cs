@@ -1,18 +1,20 @@
 using System.Collections.Generic;
 using UnityEngine;
 using System.IO;
-using System.Runtime.Serialization.Formatters.Binary;
+using Newtonsoft.Json;
 using static SaveLoadSystem.SaveableEntity;
 
-namespace SaveLoadSystem
-{
+namespace SaveLoadSystem {
     
+    [DisallowMultipleComponent]
     public class SaveLoadSystem : MonoBehaviour
     {
         static SaveLoadSystem m_instance;
         string m_basePath;
         [SerializeField] string m_savePath = "Saves/";
         [SerializeField] string m_saveName = "save.save";
+        [SerializeField] bool m_useEncryption = false;
+        [SerializeField] string m_encryptionKey = "password";
 
         private void Awake()
         {
@@ -135,15 +137,48 @@ namespace SaveLoadSystem
                 File.Delete(fullSavePath);
         }
 
+        public Coroutine LoadAsync(System.Action<float> onProgress, System.Action onComplete)
+        {
+            return StartCoroutine(LoadAsyncRoutine(onProgress, onComplete));
+        }
+
+        private System.Collections.IEnumerator LoadAsyncRoutine(System.Action<float> onProgress, System.Action onComplete)
+        {
+            var state = LoadFile();
+            if (File.Exists(fullSavePath))
+            {
+                SaveablePrefabs.UpdateTable();
+                yield return SaveableEntityManager.GlobalCreateFromSaveAsync(state, onProgress);
+            }
+            onComplete?.Invoke();
+        }
+
         static void SaveFile(object state)
         {
             if (!Directory.Exists(basePath + savePath))
                 Directory.CreateDirectory(basePath + savePath);
-            using (var stream = File.Open(fullSavePath, FileMode.Create))
+
+            JsonSerializerSettings settings = new JsonSerializerSettings
             {
-                var formatter = new BinaryFormatter();
-                formatter.Serialize(stream, state);
+                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                Formatting = Formatting.Indented,
+                // Security: Avoid TypeNameHandling.All to reduce deserialization attack surface (arbitrary code execution risk).
+                TypeNameHandling = TypeNameHandling.Auto,
+                ContractResolver = new PrivateFieldContractResolver()
+            };
+
+            string json = JsonConvert.SerializeObject(state, settings);
+
+            SaveLoadSystem currentInstance = instance;
+            bool useEncryption = currentInstance != null && currentInstance.m_useEncryption;
+            string encryptionKey = currentInstance != null ? currentInstance.m_encryptionKey : string.Empty;
+
+            if (useEncryption)
+            {
+                json = EncryptionUtility.Encrypt(json, encryptionKey);
             }
+
+            File.WriteAllText(fullSavePath, json);
         }
 
         static Dictionary<string, object> LoadFile()
@@ -153,10 +188,42 @@ namespace SaveLoadSystem
                 Debug.Log("No save file found");
                 return new Dictionary<string, object>();
             }
-            using (FileStream stream = File.Open(fullSavePath, FileMode.Open))
+
+            string json = File.ReadAllText(fullSavePath);
+
+            SaveLoadSystem currentInstance = instance;
+            bool useEncryption = currentInstance != null && currentInstance.m_useEncryption;
+            string encryptionKey = currentInstance != null ? currentInstance.m_encryptionKey : string.Empty;
+
+            if (useEncryption)
             {
-                var formatter = new BinaryFormatter();
-                return (Dictionary<string, object>)formatter.Deserialize(stream); ;
+                try
+                {
+                    json = EncryptionUtility.Decrypt(json, encryptionKey);
+                }
+                catch (System.Exception e)
+                {
+                    Debug.LogError("Failed to decrypt save file. Check your encryption key. Error: " + e.Message);
+                    return new Dictionary<string, object>();
+                }
+            }
+
+            JsonSerializerSettings settings = new JsonSerializerSettings
+            {
+                // Security: Avoid TypeNameHandling.All to reduce deserialization attack surface (arbitrary code execution risk).
+                TypeNameHandling = TypeNameHandling.Auto,
+                ContractResolver = new PrivateFieldContractResolver()
+            };
+
+            try
+            {
+                return JsonConvert.DeserializeObject<Dictionary<string, object>>(json, settings);
+            }
+            catch (JsonSerializationException e)
+            {
+                Debug.LogError($"Failed to deserialize save file due to a type mismatch. This can happen after code refactoring. " +
+                               $"Consider deleting the old save file. Error: {e.Message}");
+                return new Dictionary<string, object>();
             }
         }
 

@@ -1,8 +1,10 @@
+using SaveLoadSystem;
 using UnityEngine;
 using UnityEditor;
 using System.Collections.Generic;
+using SaveLoadSystem.Editor;
 
-namespace SaveLoadSystem.Editor
+namespace SaveLoadSystem.Editor 
 {
     [InitializeOnLoad]
     public class StartupUtilities : EditorWindow
@@ -64,10 +66,9 @@ namespace SaveLoadSystem.Editor
                 {
                     text = conflicts[i].message + "\n";
                 }
-                if (IDConflictPopup("Prefab ID Conflict", text))
-                {
-                    SaveablePrefabsEditor.ResolveIDConflicts();
-                }
+                IDConflictPopup("Prefab ID Conflict", text,
+                    "A conflict between prefab IDs has been detected. Please open the 'SaveablePrefabs' asset to resolve it.",
+                    "Open Asset", "Ignore");
             }
         }
         static void CheckForIDConflicts_scriptableObjects()
@@ -93,12 +94,11 @@ namespace SaveLoadSystem.Editor
                             conflicts.TryGetValue(saveID_interface.GetID(), out list);
                             if (list != null)
                                 list.Add(objs[i]);
-                            goto nextObj;
+                            continue;
                         }
                         allIdList.Add(saveID_interface.GetID(), objs[i]);
                     }
                 }
-            nextObj:;
             }
 
             if (conflicts.Count > 0)
@@ -121,27 +121,9 @@ namespace SaveLoadSystem.Editor
                     Debug.LogWarning("Conflict [" + index + "]: " + allIdList[conflict.Key].name + " ID=" + conflict.Key, allIdList[conflict.Key]);
                     ++index;
                 }
-                if (IDConflictPopup("Scriptable Objects ID Conflict", text))
-                {
-                    // Resolve
-                    foreach (var conflict in conflicts)
-                    {
-                        foreach (var elem in conflict.Value)
-                        {
-                            if (conflict.Value is ISaveID)
-                            {
-                                ISaveID saveID_interface = conflict.Value as ISaveID;
-                                SerializedObject obj = new SerializedObject(elem);
-                                SerializedProperty idProp = obj.FindProperty("m_ID");
-                                if (idProp != null)
-                                {
-                                    idProp.stringValue = System.Guid.NewGuid().ToString();
-                                    obj.ApplyModifiedProperties();
-                                }
-                            }
-                        }
-                    }
-                }
+                IDConflictPopup("Scriptable Objects ID Conflict", text,
+                    "Conflicts between Scriptable Object IDs have been detected. Manual resolution is required.",
+                    "OK", "");
             }
         }
         static void CheckForIDConflicts_GameObject()
@@ -189,12 +171,11 @@ namespace SaveLoadSystem.Editor
                                 if (list != null)
                                     list.Add(objs[i]);
                             }
-                            goto nextObj;
+                            continue;
                         }
                         allIdList.Add(saveID_interface.GetID(), objs[i]);
                     }
                 }
-            nextObj:;
             }
             if (conflicts.Count > 0)
             {
@@ -217,38 +198,28 @@ namespace SaveLoadSystem.Editor
                     Debug.LogWarning("Conflict [" + index + "]: " + allIdList[conflict.Key].name + " ID=" + conflict.Key, allIdList[conflict.Key]);
                     ++index;
                 }
-                if (IDConflictPopup("GameObjects ID Conflict", text))
-                {
-                    // Resolve
-                    foreach (var conflict in conflicts)
-                    {
-                        foreach (var elem in conflict.Value)
-                        {
-                            Component[] saveIDs = elem.GetComponents(typeof(ISaveID));
-                            for (int j = 0; j < saveIDs.Length; ++j)
-                            {
-                                if (saveIDs[j] is ISaveID)
-                                {
-                                    ISaveID saveID_interface = saveIDs[j] as ISaveID;
-                                    SerializedObject obj = new SerializedObject(saveIDs[j]);
-                                    SerializedProperty idProp = obj.FindProperty("m_ID");
-                                    if (idProp != null)
-                                    {
-                                        idProp.stringValue = System.Guid.NewGuid().ToString();
-                                        obj.ApplyModifiedProperties();
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
+                IDConflictPopup("GameObjects ID Conflict", text,
+                    "Conflicts between GameObject IDs have been detected. Please resolve them manually in the scene.",
+                    "OK", "");
             }
         }
 
-        static bool IDConflictPopup(string title, string message)
+        static void IDConflictPopup(string title, string logMessage, string dialogMessage, string okButton, string cancelButton)
         {
-            return EditorUtility.DisplayDialog("Save Load System: " + title,
-                                             message, "Try to resolve", "Ignore");
+            if (EditorUtility.DisplayDialog("Save Load System: " + title, dialogMessage, okButton, cancelButton))
+            {
+                // Try to find and select the SaveablePrefabs asset
+                string[] guids = AssetDatabase.FindAssets("t:SaveablePrefabs");
+                if (guids.Length > 0)
+                {
+                    string path = AssetDatabase.GUIDToAssetPath(guids[0]);
+                    Selection.activeObject = AssetDatabase.LoadAssetAtPath<SaveablePrefabs>(path);
+                }
+                else
+                {
+                    Debug.LogWarning("Could not automatically find the SaveablePrefabs asset.");
+                }
+            }
         }
 
         static void GenerateEmptyIDs()

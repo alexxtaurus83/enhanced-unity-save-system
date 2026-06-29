@@ -1,3 +1,4 @@
+using SaveLoadSystem;
 
 namespace SaveLoadSystem.Editor
 {
@@ -61,9 +62,9 @@ namespace SaveLoadSystem.Editor
                     serializedObject.FindProperty("m_ID").stringValue = "";
                     serializedObject.ApplyModifiedProperties();
                     prefabID = serializedObject.FindProperty("m_prefabID").stringValue;
-                    if(prefabID == "")
+                    if(string.IsNullOrEmpty(prefabID))
                     {
-                        prefabID = target.name;
+                        prefabID = System.Guid.NewGuid().ToString();
                         serializedObject.FindProperty("m_prefabID").stringValue = prefabID;
                         serializedObject.ApplyModifiedProperties();
                     }
@@ -133,19 +134,12 @@ namespace SaveLoadSystem.Editor
             {
                 GUILayout.BeginHorizontal();
                 GUILayout.Label("Prefab ID");
-                //autoSetPrefabID = GUILayout.Toggle(autoSetPrefabID, "Autoset Prafab ID");
-                prefabID = GUILayout.TextField(serializedObject.FindProperty("m_prefabID").stringValue);
+                GUI.enabled = false;
+                GUILayout.TextField(serializedObject.FindProperty("m_prefabID").stringValue);
+                GUI.enabled = true;
+                if (GUILayout.Button("Copy"))
+                    GUIUtility.systemCopyBuffer = serializedObject.FindProperty("m_prefabID").stringValue;
                 GUILayout.EndHorizontal();
-                /*serializedObject.FindProperty("m_autoSetPrefabID").boolValue = autoSetPrefabID;
-                if (autoSetPrefabID)
-                {
-                    prefabID = myTarget.name;
-                    serializedObject.FindProperty("m_prefabID").stringValue = prefabID;
-                }
-                else*/
-                {
-                    serializedObject.FindProperty("m_prefabID").stringValue = prefabID;
-                }
             }
 
             List<T> conflicts = GetIDConflicts(GetObjects());

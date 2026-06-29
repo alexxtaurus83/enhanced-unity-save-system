@@ -1,3 +1,4 @@
+using SaveLoadSystem;
 
 namespace SaveLoadSystem.Editor
 {
@@ -78,8 +79,6 @@ namespace SaveLoadSystem.Editor
             GUILayout.BeginHorizontal();
             if (GUILayout.Button("Load all prefabs"))
                 GenerateListWithAllPrefabs();
-            if (GUILayout.Button("Set default names"))
-                SetDefaultNames();
             if (GUILayout.Button("Clear list"))
                 ClearList();
             m_useAlternativeTableView = GUILayout.Toggle(m_useAlternativeTableView, "Alternative Table View");
@@ -90,18 +89,20 @@ namespace SaveLoadSystem.Editor
 
             if (conflicts.Count > 0)
             {
-
                 Color defaultColor = GUI.contentColor;
-                if (GUILayout.Button("Try to resolve"))
-                    ResolveIDConflicts();
-                GUILayout.Label("ID conflicts found:");
-                GUI.contentColor = 2 * Color.red + Color.green;
-                foreach (ConflictData i in conflicts)
+                EditorGUILayout.HelpBox("ID conflicts found! Multiple prefabs share the same Prefab ID. This must be resolved.", MessageType.Error);
+
+                GUI.contentColor = Color.yellow;
+                foreach (ConflictData conflict in conflicts)
                 {
-                    if (orange == null)
-                        GUILayout.Label(i.message);
-                    else
-                        GUILayout.Label(i.message, orange);
+                    EditorGUILayout.BeginHorizontal();
+                    EditorGUILayout.ObjectField(conflict.obj1, typeof(SaveableEntity), false);
+                    EditorGUILayout.ObjectField(conflict.obj2, typeof(SaveableEntity), false);
+                    if (GUILayout.Button("Generate New ID for Second"))
+                    {
+                        GenerateNewID(conflict.obj2);
+                    }
+                    EditorGUILayout.EndHorizontal();
                 }
                 GUI.contentColor = defaultColor;
             }
@@ -240,6 +241,15 @@ namespace SaveLoadSystem.Editor
             GUILayout.Label(text, headStyle);
             GUI.contentColor = defaultColor;
         }
+        public static void GenerateNewID(SaveableEntity prefab)
+        {
+            if (prefab == null) return;
+            SerializedObject obj = new SerializedObject(prefab);
+            obj.FindProperty("m_prefabID").stringValue = System.Guid.NewGuid().ToString();
+            obj.ApplyModifiedProperties();
+            Debug.Log($"Generated new Prefab ID for {prefab.name}");
+        }
+
         public static void Add(SaveableEntity pref)
         {
             if (pref == null)
@@ -247,7 +257,7 @@ namespace SaveLoadSystem.Editor
                 Debug.LogWarning("Prefab you trying to add is null");
                 return;
             }
-            Add(pref, pref.name);
+            Add(pref, pref.GetPrefabID());
         }
         public static void Add(SaveableEntity pref, string ID)
         {
@@ -396,80 +406,6 @@ namespace SaveLoadSystem.Editor
             prefab.ApplyModifiedProperties();
             saveablePrefabs.ApplyModifiedProperties();
         }
-        public static void ResolveIDConflicts()
-        {
-
-            SerializedProperty list = listProperty;
-            if (list == null)
-                return;
-            int tryCount = 0;
-            int maxTry = 100;
-            List<ConflictData> conflicts;
-            do
-            {
-                conflicts = GetIDConflicts();
-                list = listProperty;
-                if (tryCount == 0)
-                {
-                    for (int i = 0; i < list.arraySize; ++i)
-                    {
-                        for (int j = 0; j < conflicts.Count; ++j)
-                        {
-                            if (conflicts[j].index2 == i)
-                                ResetID(i);
-                        }
-                    }
-                }
-                else
-                {
-                    for (int i = 0; i < list.arraySize; ++i)
-                    {
-                        for (int j = 0; j < conflicts.Count; ++j)
-                        {
-                            if (conflicts[j].index2 == i)
-                                SetID(i, conflicts[j].obj2.name + "_" + tryCount, false);
-                        }
-                    }
-                }
-
-                ++tryCount;
-                if (tryCount > maxTry)
-                {
-                    Debug.LogError("ResolveIDConflicts(): Max tryCount reached");
-                    return;
-                }
-            } while (conflicts.Count > 0);
-        }
-        static void ResetID(int index)
-        {
-
-            if (index < 0)
-                return;
-            SerializedProperty list = listProperty;
-            if (list == null)
-                return;
-            SerializedProperty elem = list.GetArrayElementAtIndex(index);
-            SaveableEntity obj = (SaveableEntity)elem.objectReferenceValue;
-            SerializedObject prefab = new SerializedObject(obj);
-            prefab.FindProperty("m_prefabID").stringValue = obj.name;
-            prefab.ApplyModifiedProperties();
-            saveablePrefabs.ApplyModifiedProperties();
-        }
-        static void SetID(int index, string ID, bool autosetEnable)
-        {
-            if (index < 0)
-                return;
-            SerializedProperty list = listProperty;
-            if (list == null)
-                return;
-            SerializedProperty elem = list.GetArrayElementAtIndex(index);
-            SaveableEntity obj = (SaveableEntity)elem.objectReferenceValue;
-            SerializedObject prefab = new SerializedObject(obj);
-            prefab.FindProperty("m_autoSetPrefabID").boolValue = autosetEnable;
-            prefab.FindProperty("m_prefabID").stringValue = ID;
-            prefab.ApplyModifiedProperties();
-            saveablePrefabs.ApplyModifiedProperties();
-        }
         public static void ReplacePrefab(SaveableEntity oldPref, SaveableEntity newPref)
         {
             if (oldPref == null || newPref == null)
@@ -503,24 +439,6 @@ namespace SaveLoadSystem.Editor
             return obj.GetPrefabID();
         }
 
-        static void SetDefaultNames()
-        {
-            SerializedProperty list = listProperty;
-            if (list == null)
-                return;
-
-            for (int i = 0; i < list.arraySize; ++i)
-            {
-                SerializedProperty elem = list.GetArrayElementAtIndex(i);
-                SaveableEntity prefab = (SaveableEntity)elem.objectReferenceValue;
-
-                SerializedObject prefabs = new SerializedObject(prefab);
-                prefabs.FindProperty("m_prefabID").stringValue = prefab.name;
-                prefabs.ApplyModifiedProperties();
-            }
-
-            saveablePrefabs.ApplyModifiedProperties();
-        }
         public static void GenerateListWithAllPrefabs()
         {
             SerializedProperty list = listProperty;
