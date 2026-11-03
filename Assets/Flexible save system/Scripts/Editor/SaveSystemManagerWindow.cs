@@ -225,7 +225,9 @@ namespace SaveLoadSystem.Editor
 
                 JsonSerializerSettings settings = new JsonSerializerSettings
                 {
-                    TypeNameHandling = TypeNameHandling.All,
+                    // Security: Avoid TypeNameHandling.All and enforce strict type whitelisting via SerializationBinder to mitigate deserialization attacks.
+                    TypeNameHandling = TypeNameHandling.Auto,
+                    SerializationBinder = new StrictTypeSerializationBinder(),
                     ContractResolver = new PrivateFieldContractResolver()
                 };
                 _saveData = JsonConvert.DeserializeObject<Dictionary<string, object>>(json, settings);

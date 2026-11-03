@@ -157,6 +157,19 @@ namespace SaveLoadSystem {
             onComplete?.Invoke();
         }
 
+        public static JsonSerializerSettings CreateJsonSerializerSettings()
+        {
+            return new JsonSerializerSettings
+            {
+                ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
+                Formatting = Formatting.Indented,
+                // Security: Avoid TypeNameHandling.All and enforce strict type whitelisting via SerializationBinder to mitigate deserialization attacks.
+                TypeNameHandling = TypeNameHandling.Auto,
+                SerializationBinder = new StrictTypeSerializationBinder(),
+                ContractResolver = new PrivateFieldContractResolver()
+            };
+        }
+
         static void SaveFile(object state)
         {
             if (!Directory.Exists(basePath + savePath))
@@ -166,8 +179,9 @@ namespace SaveLoadSystem {
             {
                 ReferenceLoopHandling = ReferenceLoopHandling.Ignore,
                 Formatting = Formatting.Indented,
-                // Security: Avoid TypeNameHandling.All to reduce deserialization attack surface (arbitrary code execution risk).
+                // Security: Avoid TypeNameHandling.All and enforce strict type whitelisting via SerializationBinder to mitigate deserialization attacks.
                 TypeNameHandling = TypeNameHandling.Auto,
+                SerializationBinder = new StrictTypeSerializationBinder(),
                 ContractResolver = new PrivateFieldContractResolver()
             };
 
@@ -212,8 +226,9 @@ namespace SaveLoadSystem {
 
             JsonSerializerSettings settings = new JsonSerializerSettings
             {
-                // Security: Avoid TypeNameHandling.All to reduce deserialization attack surface (arbitrary code execution risk).
+                // Security: Avoid TypeNameHandling.All and enforce strict type whitelisting via SerializationBinder to mitigate deserialization attacks.
                 TypeNameHandling = TypeNameHandling.Auto,
+                SerializationBinder = new StrictTypeSerializationBinder(),
                 ContractResolver = new PrivateFieldContractResolver()
             };
 
