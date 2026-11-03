@@ -14,7 +14,11 @@ namespace SaveLoadSystem {
         [SerializeField] string m_savePath = "Saves/";
         [SerializeField] string m_saveName = "save.save";
         [SerializeField] bool m_useEncryption = false;
-        [SerializeField] string m_encryptionKey = "password";
+
+        public string DecryptSave(string cipherText)
+        {
+            return EncryptionUtility.Decrypt(cipherText, AppSecretProvider.GetSecret());
+        }
 
         private void Awake()
         {
@@ -171,11 +175,10 @@ namespace SaveLoadSystem {
 
             SaveLoadSystem currentInstance = instance;
             bool useEncryption = currentInstance != null && currentInstance.m_useEncryption;
-            string encryptionKey = currentInstance != null ? currentInstance.m_encryptionKey : string.Empty;
 
             if (useEncryption)
             {
-                json = EncryptionUtility.Encrypt(json, encryptionKey);
+                json = EncryptionUtility.Encrypt(json, AppSecretProvider.GetSecret());
             }
 
             File.WriteAllText(fullSavePath, json);
@@ -193,18 +196,17 @@ namespace SaveLoadSystem {
 
             SaveLoadSystem currentInstance = instance;
             bool useEncryption = currentInstance != null && currentInstance.m_useEncryption;
-            string encryptionKey = currentInstance != null ? currentInstance.m_encryptionKey : string.Empty;
 
             if (useEncryption)
             {
                 try
                 {
-                    json = EncryptionUtility.Decrypt(json, encryptionKey);
+                    json = currentInstance.DecryptSave(json);
                 }
                 catch (System.Exception e)
                 {
-                    Debug.LogError("Failed to decrypt save file. Check your encryption key. Error: " + e.Message);
-                    return new Dictionary<string, object>();
+                    Debug.LogError("Failed to decrypt save file. The existing save will not be overwritten by Save(). Error: " + e.Message);
+                    throw;
                 }
             }
 

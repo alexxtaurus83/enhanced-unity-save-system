@@ -55,10 +55,9 @@ namespace SaveLoadSystem.Editor
             EditorGUILayout.LabelField("Encryption Settings", EditorStyles.boldLabel);
             EditorGUILayout.PropertyField(serializedObject.FindProperty("m_useEncryption"));
             
-            // Only show the encryption key field if encryption is enabled
             if (serializedObject.FindProperty("m_useEncryption").boolValue)
             {
-                EditorGUILayout.PropertyField(serializedObject.FindProperty("m_encryptionKey"));
+                EditorGUILayout.HelpBox("Automatic protection against casual save editing, not hackers. Keep the Application Identifier unchanged so restored saves remain readable after reinstall. Uninstall may delete local saves; backup or cloud storage is needed to preserve them. Old encrypted save formats are not supported.", MessageType.Info);
             }
 
             serializedObject.ApplyModifiedProperties();

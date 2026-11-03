@@ -216,11 +216,10 @@ namespace SaveLoadSystem.Editor
                 if (saveSystemInstance != null)
                 {
                     var useEncryptionField = typeof(SaveLoadSystem).GetField("m_useEncryption", BindingFlags.NonPublic | BindingFlags.Instance);
-                    var encryptionKeyField = typeof(SaveLoadSystem).GetField("m_encryptionKey", BindingFlags.NonPublic | BindingFlags.Instance);
 
                     if ((bool)useEncryptionField.GetValue(saveSystemInstance))
                     {
-                        json = EncryptionUtility.Decrypt(json, (string)encryptionKeyField.GetValue(saveSystemInstance));
+                        json = saveSystemInstance.DecryptSave(json);
                     }
                 }
 
