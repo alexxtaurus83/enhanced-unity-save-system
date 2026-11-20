@@ -1,20 +1,12 @@
-.vs
-UserSettings
-Assets/AssetStoreTools.meta
+# Kilo Code
+.kilo/
 
-Assets/AssetStoreTools/
-
-Library/
-
-UIElementsSchema/
-
-obj/Debug/
-
-Logs/
-
+# Project-specific ignores
 saves/
-
-Temp/
+UIElementsSchema/
+obj/Debug/
+Assets/AssetStoreTools/
+Assets/AssetStoreTools.meta
 
 # This .gitignore file should be placed at the root of your Unity project directory
 #
@@ -27,6 +19,7 @@ Temp/
 /[Bb]uilds/
 /[Ll]ogs/
 /[Uu]ser[Ss]ettings/
+/[Uu]tmp/
 
 # MemoryCaptures can get excessive in size.
 # They also could contain extremely sensitive data
@@ -53,6 +46,7 @@ ExportedObj/
 *.csproj
 *.unityproj
 *.sln
+*.slnx
 *.suo
 *.tmp
 *.user
@@ -89,4 +83,3 @@ crashlytics-build.properties
 # Temporary auto-generated Android Assets
 /[Aa]ssets/[Ss]treamingAssets/aa.meta
 /[Aa]ssets/[Ss]treamingAssets/aa/*
-Assets/Flexible save system/Scripts/Runtime/SaveableEntityManager.cs.meta
