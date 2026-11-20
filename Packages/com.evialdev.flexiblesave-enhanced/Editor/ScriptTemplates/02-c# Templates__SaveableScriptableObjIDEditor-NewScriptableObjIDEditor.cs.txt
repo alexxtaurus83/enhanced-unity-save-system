@@ -1,0 +1,40 @@
+// Select which type this editor script is used for:
+#define IS_SCRIPTABLE_OBJECT
+//#define IS_MONO_BEHAVIOUR
+
+using UnityEngine;
+using UnityEditor;
+using FlexibleSave.Enhanced.Editor;
+
+[CustomEditor(typeof(YourTypeForWhichTheEditorScriptIsUsedFor))]
+public class #SCRIPTNAME# : SaveIDManagerEditor<YourTypeForWhichTheEditorScriptIsUsedFor>
+{
+#if IS_SCRIPTABLE_OBJECT
+    protected override YourTypeForWhichTheEditorScriptIsUsedFor[] GetObjects()
+    {
+        return Resources.LoadAll<YourTypeForWhichTheEditorScriptIsUsedFor>(string.Empty);
+    }
+#endif
+#if IS_MONO_BEHAVIOUR
+    protected override YourTypeForWhichTheEditorScriptIsUsedFor[] GetObjects()
+    {
+        return FindObjectsByType<YourTypeForWhichTheEditorScriptIsUsedFor>(
+            FindObjectsInactive.Include,
+            FindObjectsSortMode.None);
+    }
+#endif
+
+    protected override void OnEnable()
+    {
+        showBase = true;
+        base.OnEnable();
+    }
+
+    public override void OnBeginInspectorGUI() { }
+
+    public override void OnEndInspectorGUI() { }
+}
+
+#if IS_SCRIPTABLE_OBJECT && IS_MONO_BEHAVIOUR
+#error This editor script cannot be used for both a MonoBehaviour and a ScriptableObject. Select only one.
+#endif

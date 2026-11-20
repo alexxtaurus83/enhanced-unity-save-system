@@ -1,0 +1,14 @@
+using UnityEngine;
+using FlexibleSave.Enhanced;
+
+// Place instances of this ScriptableObject inside a "Resources" folder
+// so IDFinder.GetScriptableObject<#SCRIPTNAME#>(id) can load them at runtime.
+[CreateAssetMenu(fileName = "#SCRIPTNAME#", menuName = "ScriptableObjects/#SCRIPTNAME#")]
+public class #SCRIPTNAME# : ScriptableObject, ISaveID
+{
+    [SerializeField] [HideInInspector] private string m_ID;
+
+    public string GetID() => m_ID;
+
+    public void SetID(string id) => m_ID = id;
+}

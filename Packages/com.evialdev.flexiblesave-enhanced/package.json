@@ -1,0 +1,38 @@
+{
+  "name": "com.evialdev.flexiblesave-enhanced",
+  "displayName": "Flexible Save Enhanced",
+  "version": "2.0.1",
+  "unity": "6000.6",
+  "description": "Flexible, modular JSON save system for Unity 6.6+ with atomic writes, backup recovery, pluggable encryption, async loading, and stable entity IDs.",
+  "keywords": [
+    "save",
+    "load",
+    "persistence",
+    "json",
+    "serialization"
+  ],
+  "license": "MIT",
+  "author": {
+    "name": "evialdev"
+  },
+  "dependencies": {
+    "com.unity.nuget.newtonsoft-json": "3.2.1"
+  },
+  "samples": [
+    {
+      "displayName": "Basic Scene Saving",
+      "description": "Demonstrates saving scene objects and transforming parts.",
+      "path": "Samples~/Basic"
+    },
+    {
+      "displayName": "Prefabs and Inheritance",
+      "description": "Demonstrates prefab reinstantiation and inherited ISaveable components.",
+      "path": "Samples~/Prefabs"
+    },
+    {
+      "displayName": "ScriptableObject References",
+      "description": "Demonstrates referencing ScriptableObjects by ISaveID.",
+      "path": "Samples~/ScriptableObjects"
+    }
+  ]
+}
