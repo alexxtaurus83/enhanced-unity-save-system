@@ -4,8 +4,8 @@ Mobile operating systems (iOS and Android) can suspend or terminate backgrounded
 
 ## Rules
 
-- Save on `OnApplicationPause(true)` / `OnApplicationFocus(false)` and after meaningful gameplay milestones (level complete, purchase, upgrade). Never rely solely on `OnApplicationQuit`.
-- `SaveSystem` automatically calls `Flush()` in `OnApplicationPause(true)`, `OnApplicationQuit()`, and `OnDestroy()` so queued background writes complete before process suspension.
+- Save after meaningful gameplay milestones (level complete, purchase, upgrade), or call `SaveSystem.Instance.MarkDirty()` when state changes so `SaveSystem` saves automatically on `OnApplicationPause(true)`, `OnApplicationFocus(false)`, and `OnApplicationQuit()`. Never rely solely on `OnApplicationQuit`.
+- `Save()` and `SaveAsync()` clear `IsDirty` on success; `SaveSystem` automatically saves if `IsDirty` (when loaded, not corrupt, and not busy) and calls `Flush()` in `OnApplicationPause(true)`, `OnApplicationFocus(false)`, and `OnApplicationQuit()`, and calls `Flush()` in `OnDestroy()` so queued background writes complete before process suspension.
 - Store cooldowns and timers as UTC epoch timestamps (`endsAtUtc` in milliseconds) rather than remaining seconds, so elapsed offline time is computed accurately on load.
 - Guard all save triggers with `SaveSystem.Instance.HasLoaded && !SaveSystem.Instance.IsCorrupt && !SaveSystem.Instance.IsBusy`.
 

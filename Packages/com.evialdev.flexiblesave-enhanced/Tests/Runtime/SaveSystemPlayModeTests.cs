@@ -669,6 +669,96 @@ namespace FlexibleSave.Enhanced.Tests.Runtime
             Assert.AreSame(second, IDFinder.GetGameObject<SaveableEntity>("finder-2"));
         }
 
+        [UnityTest]
+        public IEnumerator BackgroundWrite_MarkDirtyDuringInFlightSave_PreservesDirtyAndSavesOnFocusLoss()
+        {
+            SaveSystem sys = CreateSaveSystem();
+            sys.UseBackgroundWrite = true;
+            var (_, comp) = CreateSceneEntity("Hero", "bg-dirty");
+            Assert.AreEqual(LoadStatus.NoSaveFile, sys.Load().Status);
+
+            var blockingFs = new BlockingFirstWriteFileSystem();
+            sys.FileSystem = blockingFs;
+
+            comp.Counter = 10;
+            sys.MarkDirty();
+            Assert.IsTrue(sys.IsDirty);
+
+            Assert.AreEqual(SaveStatus.Ok, sys.Save().Status);
+            Assert.IsFalse(sys.IsDirty, "Save() should clear IsDirty once snapshot is queued.");
+            blockingFs.WaitForFirstWriteStart();
+
+            // Mutate and mark dirty while first background write is in flight.
+            comp.Counter = 20;
+            sys.MarkDirty();
+            Assert.IsTrue(sys.IsDirty);
+
+            blockingFs.ReleaseFirstWrite();
+            sys.Flush(timeoutMs: 2000);
+            yield return null;
+
+            Assert.IsTrue(sys.IsDirty, "Completing an earlier background write must not clear a newer MarkDirty().");
+
+            // Focus loss should save the newer dirty snapshot and flush it.
+            MethodInfo onFocus = typeof(SaveSystem).GetMethod("OnApplicationFocus", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(onFocus);
+            onFocus.Invoke(sys, new object[] { false });
+            yield return null;
+
+            Assert.IsFalse(sys.IsDirty);
+            comp.Counter = 0;
+            Assert.AreEqual(LoadStatus.Ok, sys.Load().Status);
+            Assert.AreEqual(20, comp.Counter);
+        }
+
+        [UnityTest]
+        public IEnumerator SaveAsync_ClearsIsDirty_AndReMarksOnFailure()
+        {
+            SaveSystem sys = CreateSaveSystem();
+            sys.UseBackgroundWrite = true;
+            var (_, comp) = CreateSceneEntity("Hero", "async-dirty");
+            Assert.AreEqual(LoadStatus.NoSaveFile, sys.Load().Status);
+
+            comp.Counter = 50;
+            sys.MarkDirty();
+            Awaitable<SaveResult> okTask = sys.SaveAsync();
+            var okAwaiter = okTask.GetAwaiter();
+            while (!okAwaiter.IsCompleted)
+            {
+                yield return null;
+            }
+            Assert.AreEqual(SaveStatus.Ok, okAwaiter.GetResult().Status);
+            Assert.IsFalse(sys.IsDirty);
+
+            var failingFs = new FailingWriteFileSystem();
+            sys.FileSystem = failingFs;
+            comp.Counter = 60;
+            sys.MarkDirty();
+
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("Save failed"));
+            Awaitable<SaveResult> failTask = sys.SaveAsync();
+            var failAwaiter = failTask.GetAwaiter();
+            while (!failAwaiter.IsCompleted)
+            {
+                yield return null;
+            }
+            Assert.AreEqual(SaveStatus.Failed, failAwaiter.GetResult().Status);
+            Assert.IsTrue(sys.IsDirty, "Failed background SaveAsync must restore IsDirty.");
+        }
+
+        private sealed class FailingWriteFileSystem : IFileSystem
+        {
+            private readonly IFileSystem m_inner = PhysicalFileSystem.Instance;
+            public bool Exists(string path) => m_inner.Exists(path);
+            public void CreateDirectory(string path) => m_inner.CreateDirectory(path);
+            public byte[] ReadAllBytes(string path) => m_inner.ReadAllBytes(path);
+            public void Copy(string s, string d, bool o) => m_inner.Copy(s, d, o);
+            public void Delete(string path) => m_inner.Delete(path);
+            public void Move(string s, string d) => m_inner.Move(s, d);
+            public void Replace(string s, string d, string b) => m_inner.Replace(s, d, b);
+            public void WriteAllBytes(string path, byte[] bytes) => throw new IOException("Simulated background write failure.");
+        }
+
         private static void SetPrivateField(object target, string fieldName, object value)
         {
             FieldInfo fi = target.GetType().GetField(fieldName, BindingFlags.Instance | BindingFlags.NonPublic);

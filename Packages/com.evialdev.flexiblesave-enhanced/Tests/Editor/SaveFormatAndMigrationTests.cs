@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Text;
 using FlexibleSave.Enhanced.Security;
 using Newtonsoft.Json.Linq;
@@ -454,6 +455,124 @@ namespace FlexibleSave.Enhanced.Tests.Editor
             Assert.AreEqual(12, Enhanced.SaveState.As<int>(new JValue(12)));
             Assert.AreEqual(0, Enhanced.SaveState.As<int>(JValue.CreateNull()));
             Assert.IsNull(Enhanced.SaveState.As<string>(null));
+        }
+
+        [Test]
+        public void MarkDirty_And_Save_UpdatesIsDirtyFlag()
+        {
+            SaveSystem sys = CreateSystem();
+            var (_, comp) = CreateEntity("hero", value: 10);
+
+            Assert.IsFalse(sys.IsDirty);
+            Assert.AreEqual(LoadStatus.NoSaveFile, sys.Load().Status);
+            Assert.IsFalse(sys.IsDirty);
+
+            sys.MarkDirty();
+            Assert.IsTrue(sys.IsDirty);
+
+            comp.Value = 25;
+            Assert.AreEqual(SaveStatus.Ok, sys.Save().Status);
+            Assert.IsFalse(sys.IsDirty);
+        }
+
+        [Test]
+        public void SaveFailure_And_BlockedSave_PreserveIsDirty()
+        {
+            SaveSystem sys = CreateSystem();
+            CreateEntity("hero", value: 10);
+
+            sys.MarkDirty();
+            Assert.IsTrue(sys.IsDirty);
+
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("Save blocked"));
+            Assert.AreEqual(SaveStatus.Blocked, sys.Save().Status);
+            Assert.IsTrue(sys.IsDirty, "Blocked save must not clear IsDirty.");
+
+            Assert.AreEqual(LoadStatus.NoSaveFile, sys.Load().Status);
+            Assert.IsFalse(sys.IsDirty, "Load must reset IsDirty.");
+
+            var failingFs = new FailingReplaceFileSystem { ThrowOnWrite = true };
+            sys.FileSystem = failingFs;
+            sys.MarkDirty();
+
+            LogAssert.Expect(LogType.Error, new System.Text.RegularExpressions.Regex("Save failed"));
+            Assert.AreEqual(SaveStatus.Failed, sys.Save().Status);
+            Assert.IsTrue(sys.IsDirty, "Failed save must preserve IsDirty.");
+
+            failingFs.ThrowOnWrite = false;
+            Assert.AreEqual(SaveStatus.Ok, sys.Save().Status);
+            Assert.IsFalse(sys.IsDirty);
+
+            sys.MarkDirty();
+            sys.Delete();
+            Assert.IsFalse(sys.IsDirty, "Delete must reset IsDirty.");
+        }
+
+        [Test]
+        public void LifecycleHandlers_SaveOnlyWhenDirtyAndLoaded()
+        {
+            SaveSystem sys = CreateSystem();
+            var (_, comp) = CreateEntity("hero", value: 1);
+
+            MethodInfo onFocus = typeof(SaveSystem).GetMethod("OnApplicationFocus", BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo onPause = typeof(SaveSystem).GetMethod("OnApplicationPause", BindingFlags.Instance | BindingFlags.NonPublic);
+            MethodInfo onQuit = typeof(SaveSystem).GetMethod("OnApplicationQuit", BindingFlags.Instance | BindingFlags.NonPublic);
+            Assert.IsNotNull(onFocus);
+            Assert.IsNotNull(onPause);
+            Assert.IsNotNull(onQuit);
+
+            int saveCount = 0;
+            sys.Saved += _ => saveCount++;
+
+            // Before Load(): even if dirty, focus loss / pause / quit must not call Save() or log Save blocked.
+            sys.MarkDirty();
+            onFocus.Invoke(sys, new object[] { false });
+            onPause.Invoke(sys, new object[] { true });
+            onQuit.Invoke(sys, null);
+            Assert.AreEqual(0, saveCount);
+            Assert.IsTrue(sys.IsDirty);
+
+            Assert.AreEqual(LoadStatus.NoSaveFile, sys.Load().Status);
+            Assert.IsFalse(sys.IsDirty);
+
+            // Clean state: lifecycle events must not save.
+            onFocus.Invoke(sys, new object[] { false });
+            onFocus.Invoke(sys, new object[] { true });
+            onPause.Invoke(sys, new object[] { true });
+            onPause.Invoke(sys, new object[] { false });
+            onQuit.Invoke(sys, null);
+            Assert.AreEqual(0, saveCount);
+
+            // Focus gained (true) and unpause (false) must not save even when dirty.
+            comp.Value = 42;
+            sys.MarkDirty();
+            onFocus.Invoke(sys, new object[] { true });
+            onPause.Invoke(sys, new object[] { false });
+            Assert.AreEqual(0, saveCount);
+            Assert.IsTrue(sys.IsDirty);
+
+            // Focus lost (false) saves when dirty and clears IsDirty.
+            onFocus.Invoke(sys, new object[] { false });
+            Assert.AreEqual(1, saveCount);
+            Assert.IsFalse(sys.IsDirty);
+
+            // Pause (true) saves when dirty.
+            comp.Value = 84;
+            sys.MarkDirty();
+            onPause.Invoke(sys, new object[] { true });
+            Assert.AreEqual(2, saveCount);
+            Assert.IsFalse(sys.IsDirty);
+
+            // Quit saves when dirty.
+            comp.Value = 99;
+            sys.MarkDirty();
+            onQuit.Invoke(sys, null);
+            Assert.AreEqual(3, saveCount);
+            Assert.IsFalse(sys.IsDirty);
+
+            comp.Value = 0;
+            Assert.AreEqual(LoadStatus.Ok, sys.Load().Status);
+            Assert.AreEqual(99, comp.Value);
         }
     }
 }

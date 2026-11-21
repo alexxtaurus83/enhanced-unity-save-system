@@ -108,6 +108,7 @@ namespace FlexibleSave.Enhanced
         private Func<string> m_secretProvider;
         private SaveDocument m_cachedDocument;
         private IFileSystem m_fileSystem = PhysicalFileSystem.Instance;
+        private uint m_dirtyGeneration;
 
         private readonly object m_writeLock = new object();
         private readonly ManualResetEventSlim m_idleEvent = new ManualResetEventSlim(initialState: true);
@@ -201,6 +202,13 @@ namespace FlexibleSave.Enhanced
         public bool HasLoaded { get; private set; }
         public bool IsCorrupt { get; private set; }
         public bool IsBusy { get; private set; }
+        public bool IsDirty { get; private set; }
+
+        public void MarkDirty()
+        {
+            m_dirtyGeneration++;
+            IsDirty = true;
+        }
 
         public event Action<LoadResult> Loaded;
         public event Action<SaveResult> Saved;
@@ -289,12 +297,30 @@ namespace FlexibleSave.Enhanced
         {
             if (pauseStatus)
             {
-                Flush();
+                SaveIfDirtyAndFlush();
+            }
+        }
+
+        private void OnApplicationFocus(bool hasFocus)
+        {
+            if (!hasFocus)
+            {
+                SaveIfDirtyAndFlush();
             }
         }
 
         private void OnApplicationQuit()
         {
+            SaveIfDirtyAndFlush();
+        }
+
+        private void SaveIfDirtyAndFlush()
+        {
+            if (IsDirty && HasLoaded && !IsCorrupt && !IsBusy)
+            {
+                Save();
+            }
+
             Flush();
         }
 
@@ -436,6 +462,7 @@ namespace FlexibleSave.Enhanced
             }
 
             var sw = Stopwatch.StartNew();
+            uint capturedGeneration = m_dirtyGeneration;
             string json;
             string fullPath;
             ISaveEncryptor encryptor;
@@ -457,6 +484,11 @@ namespace FlexibleSave.Enhanced
             if (m_useBackgroundWrite && !IsWebGLPlatform)
             {
                 Task<SaveResult> writeTask = EnqueueBackgroundWrite(json, fullPath, encryptor, verbose, out bool shouldNotify);
+                if (m_dirtyGeneration == capturedGeneration &&
+                    !(writeTask.IsCompleted && writeTask.Result.Status == SaveStatus.Failed))
+                {
+                    IsDirty = false;
+                }
                 if (shouldNotify)
                 {
                     ObserveBackgroundWrite(writeTask, fullPath, verbose);
@@ -471,9 +503,16 @@ namespace FlexibleSave.Enhanced
             {
                 RaiseError("Save", result.Error, logError: false);
             }
-            else if (verbose)
+            else
             {
-                Debug.Log($"[FlexibleSave] Saved to '{fullPath}' in {result.Ms:F2} ms.");
+                if (m_dirtyGeneration == capturedGeneration)
+                {
+                    IsDirty = false;
+                }
+                if (verbose)
+                {
+                    Debug.Log($"[FlexibleSave] Saved to '{fullPath}' in {result.Ms:F2} ms.");
+                }
             }
             Saved?.Invoke(result);
             return result;
@@ -499,6 +538,7 @@ namespace FlexibleSave.Enhanced
             ct.ThrowIfCancellationRequested();
 
             var sw = Stopwatch.StartNew();
+            uint capturedGeneration = m_dirtyGeneration;
             string json;
             string fullPath;
             ISaveEncryptor encryptor;
@@ -520,6 +560,11 @@ namespace FlexibleSave.Enhanced
             if (m_useBackgroundWrite && !IsWebGLPlatform)
             {
                 Task<SaveResult> writeTask = EnqueueBackgroundWrite(json, fullPath, encryptor, verbose, out bool shouldNotify);
+                if (m_dirtyGeneration == capturedGeneration &&
+                    !(writeTask.IsCompleted && writeTask.Result.Status == SaveStatus.Failed))
+                {
+                    IsDirty = false;
+                }
                 SaveResult bgResult = await writeTask;
                 await Awaitable.MainThreadAsync();
                 if (this == null)
@@ -529,6 +574,10 @@ namespace FlexibleSave.Enhanced
 
                 sw.Stop();
                 var finalResult = new SaveResult(bgResult.Status, sw.Elapsed.TotalMilliseconds, bgResult.Error);
+                if (finalResult.Status == SaveStatus.Failed)
+                {
+                    IsDirty = true;
+                }
                 if (shouldNotify)
                 {
                     NotifyBackgroundSaveResult("SaveAsync", fullPath, verbose, finalResult);
@@ -544,9 +593,16 @@ namespace FlexibleSave.Enhanced
             {
                 RaiseError("SaveAsync", syncResult.Error, logError: false);
             }
-            else if (verbose)
+            else
             {
-                Debug.Log($"[FlexibleSave] Saved to '{fullPath}' in {syncResult.Ms:F2} ms.");
+                if (m_dirtyGeneration == capturedGeneration)
+                {
+                    IsDirty = false;
+                }
+                if (verbose)
+                {
+                    Debug.Log($"[FlexibleSave] Saved to '{fullPath}' in {syncResult.Ms:F2} ms.");
+                }
             }
             Saved?.Invoke(syncResult);
             return syncResult;
@@ -588,6 +644,7 @@ namespace FlexibleSave.Enhanced
             m_cachedDocument = null;
             IsCorrupt = false;
             HasLoaded = true;
+            IsDirty = false;
             SaveableEntityRegistry.ClearPendingDeletedIds();
 
             if (VerboseLogging)
@@ -739,6 +796,7 @@ namespace FlexibleSave.Enhanced
         {
             if (result.Status == SaveStatus.Failed)
             {
+                IsDirty = true;
                 RaiseError(operation, result.Error, logError: false);
             }
             else if (verbose)
@@ -1027,6 +1085,7 @@ namespace FlexibleSave.Enhanced
                     m_cachedDocument = null;
                     IsCorrupt = false;
                     HasLoaded = true;
+                    IsDirty = false;
                     progress?.Report(1f);
                     sw.Stop();
                     if (VerboseLogging)
@@ -1042,6 +1101,7 @@ namespace FlexibleSave.Enhanced
                 {
                     IsCorrupt = true;
                     HasLoaded = false;
+                    IsDirty = false;
                     progress?.Report(1f);
                     sw.Stop();
                     string message = $"Save file '{FullPath}' is corrupt ({outcome.Error})." +
@@ -1062,6 +1122,7 @@ namespace FlexibleSave.Enhanced
                     m_cachedDocument = outcome.Document;
                     IsCorrupt = false;
                     HasLoaded = true;
+                    IsDirty = false;
                     sw.Stop();
 
                     if (outcome.Status == LoadStatus.RestoredFromBackup)

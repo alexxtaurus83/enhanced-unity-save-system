@@ -112,7 +112,7 @@ namespace FlexibleSave.Enhanced.Editor
             {
                 EditorGUILayout.LabelField(
                     "Status",
-                    $"HasLoaded: {activeSystem.HasLoaded} | IsCorrupt: {activeSystem.IsCorrupt} | IsBusy: {activeSystem.IsBusy}");
+                    $"HasLoaded: {activeSystem.HasLoaded} | IsCorrupt: {activeSystem.IsCorrupt} | IsBusy: {activeSystem.IsBusy} | IsDirty: {activeSystem.IsDirty}");
 
                 EditorGUILayout.BeginHorizontal();
                 if (GUILayout.Button("Load"))
